@@ -4,6 +4,7 @@ from rest_framework import exceptions
 from django.utils import timezone
 import random
 import string
+import pyotp
 
 from .authentication import (
     JWTAuthentication,
@@ -41,6 +42,39 @@ class LoginAPIView(APIView):
         
         if not user.check_password(password):
             raise exceptions.AuthenticationFailed('Invalid credentials')
+
+        if user.tfa_secret:
+            return Response({
+                'user_id': user.id
+            })
+        
+        secret = pyotp.random_base32()
+        otp_auth_url = pyotp.totp.TOTP(secret).provisioning_uri(issuer_name='DRF Auth')
+
+        return Response({
+            'user_id': user.id,
+            'secret': secret,
+            'otp_auth_url': otp_auth_url
+        })
+
+
+class TwoFactorAPIView(APIView):
+    def post(self, request):
+        _id = request.data['user_id']
+
+        user = User.objects.filter(id=_id).first()
+
+        if not user:
+            raise exceptions.AuthenticationFailed('Invalid credentials')
+        
+        secret = user.tfa_secret if user.tfa_secret != '' else request.data['secret']
+
+        if not pyotp.TOTP(secret).verify(request.data['code']):
+            raise exceptions.AuthenticationFailed('Invalid credentials')
+        
+        if user.tfa_secret == '':
+            user.tfa_secret = secret
+            user.save()
 
         access_token = create_access_token(user.id)
         refresh_token = create_refresh_token(user.id)

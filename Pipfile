@@ -8,6 +8,7 @@ django = "==3.2.9"
 djangorestframework = "*"
 jwt = "*"
 django-environ = "*"
+pyotp = "*"
 
 [dev-packages]
 
